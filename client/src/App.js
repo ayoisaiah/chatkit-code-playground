@@ -1,8 +1,16 @@
 import React, { Component } from "react";
 import { Controlled as CodeMirror } from "react-codemirror2";
 import Pusher from "pusher-js";
-import pushid from "pushid";
 import axios from "axios";
+import ChatWidget from "./ChatWidget";
+import Dialog from "./Dialog";
+import {
+  handleInput,
+  sendMessage,
+  connectToRoom,
+  launchChat,
+  toggleChat
+} from "./chat-methods";
 
 import "./App.css";
 import "codemirror/lib/codemirror.css";
@@ -19,15 +27,28 @@ class App extends Component {
       id: "",
       html: "",
       css: "",
-      js: ""
+      js: "",
+      isChatOpen: false,
+      isDialogOpen: true,
+      messages: [],
+      newMessage: "",
+      currentUser: "",
+      currentRoom: "",
+      roomUsers: []
     };
 
-    this.pusher = new Pusher("18160601861a89d7f8f7", {
-      cluster: "eu",
+    this.pusher = new Pusher("<your channels app key>", {
+      cluster: "<your channels cluster>",
       forceTLS: true
     });
 
     this.channel = this.pusher.subscribe("editor");
+
+    this.handleInput = handleInput.bind(this);
+    this.launchChat = launchChat.bind(this);
+    this.sendMessage = sendMessage.bind(this);
+    this.connectToRoom = connectToRoom.bind(this);
+    this.toggleChat = toggleChat.bind(this);
   }
 
   componentDidUpdate() {
@@ -35,10 +56,6 @@ class App extends Component {
   }
 
   componentDidMount() {
-    this.setState({
-      id: pushid()
-    });
-
     this.channel.bind("text-update", data => {
       const { id } = this.state;
       if (data.id === id) return;
@@ -52,7 +69,12 @@ class App extends Component {
   }
 
   syncUpdates = () => {
-    const data = { ...this.state };
+    const data = {
+      id: this.state.id,
+      html: this.state.html,
+      css: this.state.css,
+      js: this.state.js
+    };
 
     axios
       .post("http://localhost:5000/update-editor", data)
@@ -92,13 +114,31 @@ class App extends Component {
   };
 
   render() {
-    const { html, js, css } = this.state;
+    const {
+      html,
+      js,
+      css,
+      isChatOpen,
+      newMessage,
+      messages,
+      isDialogOpen,
+      id,
+      roomUsers
+    } = this.state;
+
     const codeMirrorOptions = {
       theme: "material",
       lineNumbers: true,
       scrollbarStyle: null,
       lineWrapping: true
     };
+
+    const onlineUsers = roomUsers.filter(
+      user => user.presence.state === "online"
+    );
+    const users = onlineUsers.map(user => (
+      <span key={user.id}>{user.name}</span>
+    ));
 
     return (
       <div className="App">
@@ -146,6 +186,33 @@ class App extends Component {
         <section className="result">
           <iframe title="result" className="iframe" ref="iframe" />
         </section>
+
+        <ChatWidget
+          newMessage={newMessage}
+          sendMessage={this.sendMessage}
+          handleInput={this.handleInput}
+          messages={messages}
+          isChatOpen={isChatOpen}
+        />
+
+        <footer className="footer">
+          {roomUsers.length > 0 ? (
+            <div className="footer-content">
+              <div className="users-online">{users}</div>
+              <button onClick={this.toggleChat} className="toggle-chat">
+                {isChatOpen ? "Close Chat" : "Open Chat"}
+              </button>
+            </div>
+          ) : null}
+        </footer>
+
+        {isDialogOpen ? (
+          <Dialog
+            username={id}
+            handleInput={this.handleInput}
+            launchChat={this.launchChat}
+          />
+        ) : null}
       </div>
     );
   }
